@@ -1,0 +1,14 @@
+.git-real/
+.agents/
+.codex/
+.claude/
+.idea/
+__pycache__/
+*.py[cod]
+.DS_Store
+Thumbs.db
+node_modules/
+dist/
+build/
+.env
+.env.*
