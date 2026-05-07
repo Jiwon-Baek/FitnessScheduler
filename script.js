@@ -17,9 +17,9 @@
   ];
   const STORAGE_KEY = "fitness-scheduler-state-v1";
   const DEFAULT_MEMBERS = [
-    { id: "m-baek", name: "백지원", phone: "010-5038-5730", available: [] },
-    { id: "m-shin", name: "신진선", phone: "", available: [] },
-    { id: "m-kim", name: "김영희", phone: "", available: [] }
+    { id: "m-baek", name: "백지원", phone: "010-5038-5730", memo: "", available: [] },
+    { id: "m-shin", name: "신진선", phone: "", memo: "", available: [] },
+    { id: "m-kim", name: "김영희", phone: "", memo: "", available: [] }
   ];
 
   const TEXT = {
@@ -30,8 +30,8 @@
     resetSchedule: "스케줄 초기화",
     resetAll: "전체 정보 초기화",
     businessTitle: "운영시간 등록",
-    businessHelp: "휴무 시간을 클릭하세요. 범위 드래그 가능",
-    memberHelp: "가능한 시간을 클릭하세요. 범위 드래그 가능",
+    businessHelp: "휴무 시간을 클릭해서 선택하거나 해제하세요.",
+    memberHelp: "가능한 시간을 클릭해서 선택하거나 해제하세요.",
     save: "저장",
     close: "닫기",
     deleteMember: "회원 삭제",
@@ -40,10 +40,11 @@
     clearAssignment: "배정 해제",
     namePlaceholder: "회원 이름",
     phonePlaceholder: "전화번호",
+    memoPlaceholder: "메모",
     noCandidates: "이 시간에 가능한 회원이 없습니다.",
     closedCell: "휴무",
     confirmScheduleReset: "확정된 스케줄을 모두 초기화할까요? 회원 가능시간 정보는 유지됩니다.",
-    confirmAllReset: "전체 저장 정보를 초기화할까요? 회원목록도 기본값으로 돌아갑니다.",
+    confirmAllReset: "확정 스케줄, 운영시간, 회원 가능시간을 초기화할까요? 회원 명단과 상세정보는 유지됩니다.",
     confirmDelete: "회원을 삭제할까요?",
     imageTitle: "피트니스 주간 스케줄"
   };
@@ -51,7 +52,6 @@
   let state = loadState();
   let selectedMemberId = state.members[0]?.id || null;
   let activePopover = null;
-  let dragMode = null;
 
   const app = document.querySelector("#app");
   renderApp();
@@ -73,6 +73,7 @@
           id: member.id,
           name: member.name,
           phone: member.phone || "",
+          memo: member.memo || "",
           available: Array.isArray(member.available) ? member.available : []
         })),
         closed: Array.isArray(saved.closed) ? saved.closed : [],
@@ -284,16 +285,19 @@
 
   function openMemberDialog(memberId) {
     const isNew = !memberId;
-    const member = isNew ? { id: createId(), name: "", phone: "", available: [] } : state.members.find(item => item.id === memberId);
+    const member = isNew ? { id: createId(), name: "", phone: "", memo: "", available: [] } : state.members.find(item => item.id === memberId);
     if (!member) return;
     const selected = new Set(member.available);
     const overlay = dialogShell(isNew ? TEXT.addMember : member.name, TEXT.memberHelp);
     const dialog = overlay.querySelector(".dialog");
     const form = document.createElement("div");
-    form.className = "form-row";
+    form.className = "member-form";
     form.innerHTML = `
-      <input class="text-field" id="memberName" value="${escapeAttr(member.name)}" placeholder="${TEXT.namePlaceholder}">
-      <input class="text-field" id="memberPhone" value="${escapeAttr(member.phone)}" placeholder="${TEXT.phonePlaceholder}">
+      <div class="form-row">
+        <input class="text-field" id="memberName" value="${escapeAttr(member.name)}" placeholder="${TEXT.namePlaceholder}">
+        <input class="text-field" id="memberPhone" value="${escapeAttr(member.phone)}" placeholder="${TEXT.phonePlaceholder}">
+      </div>
+      <textarea class="text-field memo-field" id="memberMemo" placeholder="${TEXT.memoPlaceholder}">${escapeHtml(member.memo || "")}</textarea>
     `;
     dialog.insertBefore(form, dialog.querySelector(".edit-grid"));
     wireTimeGrid(dialog.querySelector(".edit-grid"), selected, "available", key => isClosed(key));
@@ -322,12 +326,14 @@
     dialog.querySelector("[data-save]").addEventListener("click", () => {
       const name = dialog.querySelector("#memberName").value.trim();
       const phone = dialog.querySelector("#memberPhone").value.trim();
+      const memo = dialog.querySelector("#memberMemo").value.trim();
       if (!name) {
         dialog.querySelector("#memberName").focus();
         return;
       }
       member.name = name;
       member.phone = phone;
+      member.memo = memo;
       member.available = [...selected].filter(key => !isClosed(key));
       if (isNew) state.members.push(member);
       selectedMemberId = member.id;
@@ -389,32 +395,24 @@
         const key = cellKey(day, time.id);
         const slot = cell("", `cell slot${selected.has(key) ? ` ${modeClass}` : ""}${disabled(key) ? " closed" : ""}`);
         slot.dataset.key = key;
-        slot.addEventListener("pointerdown", event => {
+        slot.addEventListener("click", event => {
           if (disabled(key)) return;
           event.preventDefault();
-          dragMode = !selected.has(key);
-          setSelection(slot, selected, modeClass, dragMode);
-        });
-        slot.addEventListener("pointerenter", () => {
-          if (dragMode === null || disabled(key)) return;
-          setSelection(slot, selected, modeClass, dragMode);
+          toggleSelection(slot, selected, modeClass);
         });
         grid.appendChild(slot);
       });
     });
-    document.addEventListener("pointerup", () => {
-      dragMode = null;
-    }, { once: true });
   }
 
-  function setSelection(slot, selected, modeClass, shouldSelect) {
+  function toggleSelection(slot, selected, modeClass) {
     const key = slot.dataset.key;
-    if (shouldSelect) {
-      selected.add(key);
-      slot.classList.add(modeClass);
-    } else {
+    if (selected.has(key)) {
       selected.delete(key);
       slot.classList.remove(modeClass);
+    } else {
+      selected.add(key);
+      slot.classList.add(modeClass);
     }
   }
 
@@ -428,7 +426,11 @@
 
   function resetAll() {
     if (!confirm(TEXT.confirmAllReset)) return;
-    state = blankState();
+    state = {
+      members: state.members.map(member => ({ ...member, available: [] })),
+      closed: [],
+      assignments: {}
+    };
     selectedMemberId = state.members[0]?.id || null;
     saveState();
     renderMembers();
@@ -437,7 +439,7 @@
 
   function saveScheduleImage() {
     const scale = 2;
-    const width = 1200;
+    const width = 1320;
     const height = 860;
     const canvas = document.createElement("canvas");
     canvas.width = width * scale;
@@ -450,11 +452,24 @@
     ctx.font = "800 30px system-ui, sans-serif";
     ctx.fillText(TEXT.imageTitle, 36, 52);
 
-    const startX = 36;
+    const navX = 36;
+    const navY = 86;
+    const navW = 230;
+    const startX = 292;
     const startY = 86;
     const timeW = 70;
-    const cellW = 150;
+    const cellW = 136;
     const cellH = 52;
+
+    drawRect(ctx, navX, navY, navW, cellH * (TIMES.length + 1), "#ffffff", "#d9cbe9");
+    drawRect(ctx, navX, navY, navW, cellH, "#eee3fb", "#bda6d8");
+    drawText(ctx, TEXT.memberList, navX + 16, navY + 33, "#563383", "left", "800 18px system-ui");
+    state.members.forEach((member, index) => {
+      const y = navY + cellH + 14 + index * 66;
+      drawText(ctx, member.name, navX + 16, y + 18, "#252031", "left", "800 16px system-ui");
+      drawText(ctx, memberBadges(member.id).join("  "), navX + 16, y + 43, "#5b4d19", "left", "700 14px system-ui");
+    });
+
     drawRect(ctx, startX, startY, timeW + cellW * DAYS.length, cellH, "#eee3fb", "#bda6d8");
     DAYS.forEach((day, index) => drawText(ctx, day, startX + timeW + cellW * index + cellW / 2, startY + 33, "#563383", "center", "800 18px system-ui"));
 
@@ -473,16 +488,8 @@
       });
     });
 
-    const memberY = startY + cellH * (TIMES.length + 1) + 34;
-    drawText(ctx, TEXT.memberList, 36, memberY, "#563383", "left", "800 22px system-ui");
-    state.members.forEach((member, index) => {
-      const y = memberY + 34 + index * 34;
-      drawText(ctx, member.name, 36, y, "#252031", "left", "800 17px system-ui");
-      drawText(ctx, memberBadges(member.id).join("  "), 170, y, "#5b4d19", "left", "700 15px system-ui");
-    });
-
     const link = document.createElement("a");
-    link.download = "fitness-schedule.png";
+    link.download = `fitness-schedule-${timestampForFilename()}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
   }
@@ -533,6 +540,19 @@
 
   function createId() {
     return `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  }
+
+  function timestampForFilename() {
+    const now = new Date();
+    const parts = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, "0"),
+      String(now.getDate()).padStart(2, "0"),
+      String(now.getHours()).padStart(2, "0"),
+      String(now.getMinutes()).padStart(2, "0"),
+      String(now.getSeconds()).padStart(2, "0")
+    ];
+    return `${parts[0]}${parts[1]}${parts[2]}_${parts[3]}${parts[4]}${parts[5]}`;
   }
 
   function escapeHtml(value) {

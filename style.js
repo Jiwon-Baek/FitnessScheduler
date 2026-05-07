@@ -287,6 +287,12 @@
       margin-bottom: 14px;
     }
 
+    .member-form {
+      display: grid;
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
     .text-field {
       width: 100%;
       min-height: 44px;
@@ -295,6 +301,13 @@
       padding: 0 12px;
       background: #fff;
       color: var(--ink);
+    }
+
+    .memo-field {
+      min-height: 92px;
+      padding-top: 10px;
+      resize: vertical;
+      line-height: 1.45;
     }
 
     .edit-grid {
